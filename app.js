@@ -97,8 +97,6 @@ export class TaskRepository {
     return true;
   }
 
-
-
   clearCompleted() {
     const completedTasks = this._tasksCache.filter(t => t.completed);
     if (completedTasks.length === 0) return [];
@@ -106,6 +104,33 @@ export class TaskRepository {
     this._tasksCache = this._tasksCache.filter(t => !t.completed);
     this._commitToStorage();
     return completedTasks; // 削除されたタスクのリストを返す
+  }
+
+  // 追加: JSONエクスポート/インポート（互換性維持のため簡易実装）
+  exportAsJson() {
+    try {
+      return JSON.stringify(this.findAll());
+    } catch (e) {
+      console.warn('exportAsJson failed', e);
+      return '[]';
+    }
+  }
+
+  importFromJson(json) {
+    try {
+      const data = JSON.parse(json);
+      if (!Array.isArray(data)) return false;
+      // 簡易バリデーション: id と title を持つオブジェクト配列
+      if (!data.every(t => t && typeof t.id === 'string' && typeof t.title === 'string')) {
+        return false;
+      }
+      this._tasksCache = data;
+      this._commitToStorage();
+      return true;
+    } catch (e) {
+      console.warn('importFromJson failed', e);
+      return false;
+    }
   }
 }
 
@@ -280,8 +305,6 @@ export class Renderer {
     if(clearBtn) {
       clearBtn.addEventListener('click', () => this.app._clearCompletedTasks());
     }
-
-
 
     // 現在時刻へジャンプボタン
     const jumpToNowBtn = this.document.getElementById('jump-to-now-btn');
@@ -547,11 +570,11 @@ export class Renderer {
     });
 
     // --- リサイズ ---
-    const handle = this.document.createElement('div');
-    handle.className = 'resize-handle';
-    card.appendChild(handle);
+    const bottomHandle = this.document.createElement('div');
+    bottomHandle.className = 'resize-handle';
+    card.appendChild(bottomHandle);
 
-    handle.addEventListener('pointerdown', (e) => {
+    bottomHandle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       const startY = e.clientY;
@@ -570,6 +593,38 @@ export class Renderer {
         this.app._applyResize(card.id, totalDelta, 'end');
       };
       
+      this.document.addEventListener('pointermove', onMove);
+      this.document.addEventListener('pointerup', onUp);
+    });
+
+    // --- 上部リサイズハンドル ---
+    const topHandle = this.document.createElement('div');
+    topHandle.className = 'resize-handle top';
+    card.appendChild(topHandle);
+
+    topHandle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startY = e.clientY;
+      const startTop = parseInt(card.style.top, 10);
+      const startHeight = parseInt(card.style.height, 10);
+
+      const onMove = (mEvt) => {
+        const deltaY = mEvt.clientY - startY;
+        const newHeight = Math.max(15, startHeight - deltaY);
+        const newTop = startTop + deltaY;
+        card.style.height = newHeight + 'px';
+        card.style.top = newTop + 'px';
+      };
+
+      const onUp = (uEvt) => {
+        this.document.removeEventListener('pointermove', onMove);
+        this.document.removeEventListener('pointerup', onUp);
+        const totalDelta = uEvt.clientY - startY;
+        if (Math.abs(totalDelta) < 1) return;
+        this.app._applyResize(card.id, totalDelta, 'start');
+      };
+
       this.document.addEventListener('pointermove', onMove);
       this.document.addEventListener('pointerup', onUp);
     });
@@ -712,14 +767,15 @@ export class Renderer {
     const tasks = dateRepo.findAll();
   
     // 日付ヘッダーの表示を無効化（UI崩壊を防ぐため）
-    // const dateHeader = this.document.createElement('div');
-    // dateHeader.className = 'date-header-indicator';
-    // dateHeader.textContent = dateStr;
-    
+    const dateHeader = this.document.createElement('div');
+    dateHeader.className = 'date-header-indicator';
+    dateHeader.textContent = dateStr;
+    dateHeader.style.display = 'none'; // レイアウト崩れを防ぐため非表示
+  
     const container = this.document.createElement('div');
     container.className = 'date-section';
     container.dataset.date = dateStr;
-    // container.appendChild(dateHeader);
+    container.appendChild(dateHeader);
   
     const tasksWithLanes = this.app.laneCalculator.calculateLanes(tasks);
     tasksWithLanes.forEach(task => {
@@ -862,6 +918,16 @@ export class TaskApp {
       clearBtn.addEventListener('click', () => this._clearCompletedTasks());
     }
 
+    // リセットボタン
+    const resetBtn = this.document.getElementById('reset-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        if (confirm('すべてのタスクを削除しますか？')) {
+          this._resetAllTasks();
+        }
+      });
+    }
+
     // テンプレートボタンの処理はRendererで行う
   }
 
@@ -939,7 +1005,8 @@ export class TaskApp {
     this.document.getElementById('edit-startTime').value = task.startTime;
     this.document.getElementById('edit-endTime').value = task.endTime;
     this.document.getElementById('edit-priority').value = task.priority;
-    this.document.getElementById('edit-repeat').value = task.repeat || 'none';
+    const repeatSel = this.document.getElementById('edit-repeat');
+    if (repeatSel) repeatSel.value = task.repeat || 'none';
     dialog.style.display = 'block';
   }
 
@@ -1355,6 +1422,20 @@ export class TaskApp {
     }
   }
 
+  _resetAllTasks() {
+    // 現在ロード済みの日付キーをすべて削除
+    const keys = Object.keys(localStorage);
+    keys.forEach(k => {
+      if (k === 'tasks' || k.startsWith('tasks-')) {
+        localStorage.removeItem(k);
+      }
+    });
+    this.repository = new TaskRepository(); // 再生成して空状態に
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+    this.loadedDates = new Set([this.currentDate]);
+  }
+
   jumpToCurrentTime() {
     const timelineContainer = this.document.getElementById('timeline-container');
     if (!timelineContainer) return;
@@ -1382,8 +1463,6 @@ export class TaskApp {
       behavior: 'smooth'
     });
   }
-
-
 
   _handleSentinelIntersection(entries) {
     entries.forEach((entry) => {
@@ -1444,53 +1523,31 @@ export class TaskApp {
     let startTime, endTime;
 
     if (dropPosition !== null) {
-      // ドロップ位置が指定された場合、その位置から開始
-      const templateStartMin = TimeUtils.timeToMinutes(tpl.startTime);
-      const templateEndMin = TimeUtils.timeToMinutes(tpl.endTime);
-      let duration = templateEndMin - templateStartMin;
-      
-      // 日をまたぐ場合の処理（睡眠など）
-      if (duration <= 0) {
-        duration = (24 * 60) + duration; // 翌日までの時間
-      }
-
-      let newEndMinutes = dropPosition + duration;
-      if (newEndMinutes > 1439) {
-        newEndMinutes = 1439;
-        dropPosition = newEndMinutes - duration;
-      }
-
-      startTime = TimeUtils.minutesToTime(dropPosition);
-      endTime = TimeUtils.minutesToTime(newEndMinutes);
+        const templateStartMin = TimeUtils.timeToMinutes(tpl.startTime);
+        const templateEndMin = TimeUtils.timeToMinutes(tpl.endTime);
+        const dur = templateEndMin - templateStartMin <=0 ? templateEndMin - templateStartMin + 1440 : templateEndMin - templateStartMin;
+        let newEnd = dropPosition + dur;
+        if(newEnd>1439){ newEnd=1439; dropPosition=newEnd-dur; }
+        startTime = TimeUtils.minutesToTime(dropPosition);
+        endTime = TimeUtils.minutesToTime(newEnd);
     } else {
-      // クリックの場合、テンプレートのデフォルト時間を使用
-      startTime = tpl.startTime;
-      endTime = tpl.endTime;
+        startTime=tpl.startTime; endTime=tpl.endTime;
     }
 
-    const task = {
-      id: `task-${name}-${Date.now()}`,
-      title: tpl.title,
-      startTime: startTime,
-      endTime: endTime,
-      date: this.currentDate,
-      priority: 'medium',
-      completed: false,
-      lane: 1,
-    };
-
-    // 履歴に追加
-    this._pushHistory({
-      type: 'add',
-      task: { ...task }
-    });
-
-    this.repository.save(task);
-    if (this.renderer) {
-      this.renderer.renderTimeline();
-      this.renderer.updateStats();
+    const durationMinutes = TimeUtils.timeToMinutes(endTime) - TimeUtils.timeToMinutes(startTime);
+    const taskList = [];
+    if(durationMinutes<=0){
+       // split
+       const todayEnd='23:59';
+       taskList.push({id:`task-${name}-a-${Date.now()}`,title:tpl.title,startTime,startTime:startTime,endTime:todayEnd,date:this.currentDate,priority:'medium',completed:false,lane:1});
+       const nextDate=new Date(this.currentDate);nextDate.setDate(nextDate.getDate()+1);const nextStr=formatDate(nextDate);
+       taskList.push({id:`task-${name}-b-${Date.now()}`,title:tpl.title,startTime:'00:00',endTime:endTime,date:nextStr,priority:'medium',completed:false,lane:1});
+    } else {
+       taskList.push({id:`task-${name}-${Date.now()}`,title:tpl.title,startTime,endTime,date:this.currentDate,priority:'medium',completed:false,lane:1});
     }
-    return true;
+
+    taskList.forEach(task=>{this._pushHistory({type:'add',task:{...task}});const repo=task.date===this.currentDate?this.repository:new TaskRepository(`tasks-${task.date}`);repo.save(task);});
+    this.renderer.renderTimeline();this.renderer.updateStats();return true;
   }
 
   /**
