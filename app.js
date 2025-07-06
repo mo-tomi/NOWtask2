@@ -97,24 +97,7 @@ export class TaskRepository {
     return true;
   }
 
-  exportAsJson() {
-    return JSON.stringify(this._tasksCache);
-  }
 
-  importFromJson(jsonString) {
-    try {
-      const arr = JSON.parse(jsonString);
-      if (!Array.isArray(arr)) {
-        throw new Error('データ形式が配列ではありません');
-      }
-      this._tasksCache = arr;
-      this._commitToStorage();
-      return true;
-    } catch (e) {
-      console.error('importFromJson failed', e);
-      return false;
-    }
-  }
 
   clearCompleted() {
     const completedTasks = this._tasksCache.filter(t => t.completed);
@@ -284,18 +267,12 @@ export class Renderer {
       clearBtn.addEventListener('click', () => this.app._clearCompletedTasks());
     }
 
-    // エクスポート／インポートボタン
-    const exportBtn = this.document.getElementById('export-btn');
-    if(exportBtn) {
-      exportBtn.addEventListener('click', () => this.app._handleExport());
-    }
-    const importBtn = this.document.getElementById('import-btn');
-    if(importBtn) {
-      importBtn.addEventListener('click', () => this.document.getElementById('import-file-input').click());
-    }
-    const importFileInput = this.document.getElementById('import-file-input');
-    if(importFileInput){
-        importFileInput.addEventListener('change', (e) => this.app._handleFileImport(e));
+
+
+    // 現在時刻へジャンプボタン
+    const jumpToNowBtn = this.document.getElementById('jump-to-now-btn');
+    if (jumpToNowBtn) {
+      jumpToNowBtn.addEventListener('click', () => this.app.jumpToCurrentTime());
     }
 
     // アンドゥ／リドゥボタン
@@ -588,6 +565,54 @@ export class Renderer {
       m.style.top = (h * AppConfig.MINUTES_PER_HOUR) + 'px';
       timeline.appendChild(m);
     }
+
+    // 現在時刻の線を表示
+    this._renderCurrentTimeLine();
+  }
+
+  _renderCurrentTimeLine() {
+    const timeline = this.document.getElementById('timeline');
+    if (!timeline) return;
+
+    // 既存の現在時刻線を削除
+    const existingLine = timeline.querySelector('.current-time-line');
+    if (existingLine) {
+      existingLine.remove();
+    }
+
+    // 今日の日付でない場合は表示しない
+    const today = this.app._getTodayString();
+    if (this.app.currentDate !== today) return;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const currentTimeLine = this.document.createElement('div');
+    currentTimeLine.className = 'current-time-line';
+    currentTimeLine.style.position = 'absolute';
+    currentTimeLine.style.left = '0';
+    currentTimeLine.style.top = currentMinutes + 'px';
+    currentTimeLine.style.height = '2px';
+    currentTimeLine.style.width = '100%';
+    currentTimeLine.style.backgroundColor = '#ff4444';
+    currentTimeLine.style.zIndex = '10';
+    currentTimeLine.style.boxShadow = '0 0 4px rgba(255, 68, 68, 0.5)';
+    
+    // 現在時刻のテキストを表示
+    const timeText = this.document.createElement('div');
+    timeText.style.position = 'absolute';
+    timeText.style.left = '4px';
+    timeText.style.top = '-10px';
+    timeText.style.fontSize = '12px';
+    timeText.style.color = '#ff4444';
+    timeText.style.fontWeight = 'bold';
+    timeText.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+    timeText.style.padding = '2px 4px';
+    timeText.style.borderRadius = '2px';
+    timeText.textContent = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    currentTimeLine.appendChild(timeText);
+    
+    timeline.appendChild(currentTimeLine);
   }
 
   updateStats() {
@@ -614,17 +639,16 @@ export class Renderer {
   
     const dateRepo = new TaskRepository(`tasks-${dateStr}`);
     const tasks = dateRepo.findAll();
-    // タスクがなくても日付ヘッダーを表示する仕様に変更
   
-    // 日付ヘッダーを追加
-    const dateHeader = this.document.createElement('div');
-    dateHeader.className = 'date-header-indicator';
-    dateHeader.textContent = dateStr;
+    // 日付ヘッダーの表示を無効化（UI崩壊を防ぐため）
+    // const dateHeader = this.document.createElement('div');
+    // dateHeader.className = 'date-header-indicator';
+    // dateHeader.textContent = dateStr;
     
     const container = this.document.createElement('div');
     container.className = 'date-section';
     container.dataset.date = dateStr;
-    container.appendChild(dateHeader);
+    // container.appendChild(dateHeader);
   
     const tasksWithLanes = this.app.laneCalculator.calculateLanes(tasks);
     tasksWithLanes.forEach(task => {
@@ -678,6 +702,16 @@ export class TaskApp {
     this._setupEventListeners();
     this.renderer.init();
     this.setDate(this.currentDate);
+    this._startCurrentTimeUpdater();
+  }
+
+  _startCurrentTimeUpdater() {
+    // 現在時刻の線を1分ごとに更新
+    setInterval(() => {
+      if (this.currentDate === this._getTodayString()) {
+        this.renderer._renderCurrentTimeLine();
+      }
+    }, 60000); // 1分ごと
   }
 
   _initializeDateFromURL() {
@@ -958,24 +992,35 @@ export class TaskApp {
     const dateEl = this.document.getElementById('current-date');
     if(dateEl) dateEl.textContent = this.currentDate;
     this._recreateRepository();
+    
+    // IntersectionObserverを完全に停止
+    if (this.renderer.observer) {
+      this.renderer.observer.disconnect();
+      this.renderer.observer = null;
+    }
+    
+    // loadedDatesをリセット（新しい日付のみ含む）
+    this.loadedDates = new Set([newDateStr]);
+    
     // リピートタスク (daily) の自動生成
     this._generateRepeatTasks(newDateStr);
     this.renderer.renderTimeline();
     this.renderer.updateStats();
+    
+    // IntersectionObserverを再設定
+    this.renderer._setupIntersectionObserver();
   }
 
   goToPrevDay(){
     const current = new Date(this.currentDate);
     current.setDate(current.getDate() - 1);
-    this.currentDate = formatDate(current);
-    this.renderer.renderTimelineForDate(this.currentDate, 'prepend');
+    this.setDate(formatDate(current));
   }
   
   goToNextDay(){
     const current = new Date(this.currentDate);
     current.setDate(current.getDate() + 1);
-    this.currentDate = formatDate(current);
-    this.renderer.renderTimelineForDate(this.currentDate, 'append');
+    this.setDate(formatDate(current));
   }
 
   _editTask(taskId, editData) {
@@ -1155,46 +1200,35 @@ export class TaskApp {
     }
   }
 
-  _handleExport() {
-    const json = this.repository.exportAsJson();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = this.document.createElement('a');
-    a.href = url;
-    a.download = `nowtask-backup-${this.currentDate}.json`;
-    this.document.body.appendChild(a);
-    a.click();
-    this.document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    return json; // for testability
-  }
+  jumpToCurrentTime() {
+    const timelineContainer = this.document.getElementById('timeline-container');
+    if (!timelineContainer) return;
 
-  _handleImport(jsonString) {
-    if (!confirm('現在のタスクは上書きされます。よろしいですか？')) return;
-    const success = this.repository.importFromJson(jsonString);
-    if (success) {
-      this.renderer.renderTimeline(); // renderTimelineがsentinelを再描画する
-      this.renderer.updateStats();
-      alert('データをインポートしました。');
-    } else {
-      alert('データのインポートに失敗しました。ファイルが壊れている可能性があります。');
+    // 今日の日付でない場合は、まず今日の日付に変更
+    const today = this._getTodayString();
+    if (this.currentDate !== today) {
+      this.setDate(today);
     }
+
+    // 現在時刻の位置を計算
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    // 現在時刻の位置（px）を計算
+    const targetPosition = currentMinutes;
+    
+    // 画面の中央に表示するために、半分の高さ分を引く
+    const containerHeight = timelineContainer.clientHeight;
+    const adjustedPosition = Math.max(0, targetPosition - containerHeight / 2);
+    
+    // スムーズにスクロール
+    timelineContainer.scrollTo({
+      top: adjustedPosition,
+      behavior: 'smooth'
+    });
   }
 
-  _handleFileImport(event) {
-    const file = event.target.files[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      this._handleImport(e.target.result);
-    };
-    reader.onerror = () => {
-        alert('ファイルの読み込みに失敗しました。');
-    };
-    reader.readAsText(file);
-    event.target.value = ''; // 同じファイルを連続で読み込めるように
-  }
 
   _handleSentinelIntersection(entries) {
     entries.forEach((entry) => {
