@@ -1,0 +1,23 @@
+const { chromium } = require('playwright');
+(async () => {
+ const browser = await chromium.launch({ args:['--allow-file-access-from-files'] });
+ const context = await browser.newContext({ viewport: { width:1280, height:720 } });
+ const url = 'file://' + require('path').resolve(__dirname, 'index.html');
+ let page = await context.newPage();
+ await page.goto(url);
+ await page.fill('#quick-add-input','完了テスト');
+ await page.click('#add-button');
+ await page.waitForTimeout(300);
+ console.log('page1 cards', await page.locator('.task-card').count());
+ await page.close();
+ page = await context.newPage();
+ await page.goto(url);
+ await page.fill('#quick-add-input','ドラッグテスト');
+ await page.click('#add-button');
+ await page.waitForTimeout(300);
+ console.log('page2 cards', await page.locator('.task-card').count());
+ console.log('page2 drag visible', await page.locator('.task-card',{hasText:'ドラッグテスト'}).isVisible());
+ const bb = await page.locator('.task-card',{hasText:'ドラッグテスト'}).boundingBox();
+ console.log('bb', bb);
+ await browser.close();
+})(); 

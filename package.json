@@ -1,0 +1,25 @@
+{
+  "name": "nowtask2",
+  "version": "1.0.0",
+  "description": "LocalStorage ベースのタスク管理アプリ NOWtask2",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "dev": "vite",
+    "start": "vite preview --port 5173",
+    "lint": "eslint . --ext .js --ext .cjs --ext .mjs",
+    "format": "prettier --write .",
+    "e2e":  "npx playwright test e2e.spec.js"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4",
+    "vite": "^5.0.10",
+    "eslint": "^8.55.0",
+    "eslint-plugin-vitest": "^0.3.1",
+    "eslint-config-prettier": "^9.0.0",
+    "prettier": "^3.2.5"
+  }
+}

@@ -1,0 +1,1140 @@
+```html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NowTask - 今日やることタイムライン</title>
+    <link rel="icon" href="data:,">
+    <style>
+        :root {
+            --header-height: 60px;
+            --sidebar-width: 280px;
+            --timeline-hour-width: 80px;
+
+            --font-family-base: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            
+            --color-bg: #f4f7f9;
+            --color-primary: #3a86ff;
+            --color-primary-light: #e0e9ff;
+            --color-danger: #ff3a3a;
+            --color-warning: #ff9f1c;
+            --color-success: #2ec4b6;
+            
+            --color-text-dark: #2b2d42;
+            --color-text-medium: #8d99ae;
+            --color-text-light: #adb5bd;
+            
+            --color-border: #edf2f4;
+            --color-white: #ffffff;
+            --color-card-bg: var(--color-white);
+
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 10px rgba(0,0,0,0.08);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,0.1);
+
+            --border-radius-sm: 4px;
+            --border-radius-md: 8px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family-base);
+            background-color: var(--color-bg);
+            color: var(--color-text-dark);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* ヘッダー (サイドバーに統合) */
+        .header {
+            display: none; 
+        }
+
+        /* サイドバー */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--color-white);
+            border-right: 1px solid var(--color-border);
+            padding: 24px;
+            flex-shrink: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .sidebar-header h1 {
+            font-size: 28px;
+            font-weight: bold;
+            color: var(--color-primary);
+            text-align: center;
+        }
+        
+        .date-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+        }
+        .date-nav button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--color-text-medium);
+            font-size: 24px;
+            padding: 4px;
+            transition: color 0.2s;
+        }
+        .date-nav button:hover {
+            color: var(--color-primary);
+        }
+        #current-date {
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 32px;
+        }
+        .sidebar-section h2 {
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: var(--color-text-medium);
+            margin-bottom: 16px;
+        }
+        
+        /* クイック追加 */
+        #quick-add-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius-md);
+            font-size: 16px;
+            outline: none;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+        #quick-add-input:focus {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-light);
+        }
+        #add-button {
+            width: 100%;
+            padding: 12px;
+            background: var(--color-primary);
+            color: var(--color-white);
+            border: none;
+            border-radius: var(--border-radius-md);
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        #add-button:hover {
+            background: #2a73e8;
+        }
+        
+        /* コントロールとフィルター */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group button, .control-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius-md);
+            background: var(--color-bg);
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .control-group button:hover, .control-group select:hover {
+            border-color: #d0d8e0;
+            background: #eef2f5;
+        }
+
+        /* 統計 */
+        #stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        #stats > div {
+            background: var(--color-bg);
+            padding: 12px;
+            border-radius: var(--border-radius-md);
+            text-align: center;
+        }
+        #stats .label {
+            font-size: 12px;
+            color: var(--color-text-medium);
+        }
+        #stats .value {
+            font-size: 22px;
+            font-weight: bold;
+            color: var(--color-text-dark);
+        }
+        
+        /* メインコンテンツ */
+        .main-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .timeline-container {
+            flex: 1;
+            overflow: auto;
+            padding: 20px;
+        }
+
+        .timeline {
+            position: relative;
+            min-height: 1440px; /* 24時間 × 60分 */
+            background-size: 100% 60px;
+            background-image: linear-gradient(to bottom, var(--color-border) 1px, transparent 1px);
+        }
+
+        .time-marker {
+            position: absolute;
+            left: 0;
+            width: var(--timeline-hour-width);
+            height: 60px;
+            padding-right: 12px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-end;
+            font-size: 13px;
+            color: var(--color-text-light);
+            border-right: 1px solid var(--color-border);
+        }
+        
+        .task-card {
+            position: absolute;
+            left: calc(var(--timeline-hour-width) + 12px);
+            padding: 10px 14px;
+            border-radius: var(--border-radius-sm);
+            box-shadow: var(--shadow-sm);
+            background-color: var(--color-card-bg);
+            border-left: 5px solid var(--color-primary);
+            min-height: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: all 0.2s ease;
+            cursor: grab;
+            font-size: 15px;
+        }
+
+        .task-card:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: var(--shadow-md);
+            z-index: 10;
+        }
+
+        .task-card.completed {
+            background-color: #e9ecef;
+            border-color: var(--color-text-light);
+            color: var(--color-text-medium);
+            text-decoration: line-through;
+        }
+
+        .task-card[data-priority="high"] { border-left-color: var(--color-danger); }
+        .task-card[data-priority="medium"] { border-left-color: var(--color-warning); }
+        .task-card[data-priority="low"] { border-left-color: var(--color-success); }
+        
+        .task-card.editing {
+            cursor: text;
+            box-shadow: 0 0 0 2px var(--color-primary);
+            background: var(--color-white);
+        }
+
+        .task-card .inline-edit {
+            width: 100%;
+            border: none;
+            outline: none;
+            font: inherit;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* レーン配置 */
+        .task-card[data-lane="1"] { left: 92px; width: 220px; }
+        .task-card[data-lane="2"] { left: 322px; width: 220px; }
+        .task-card[data-lane="3"] { left: 552px; width: 220px; }
+        .task-card[data-lane="4"] { left: 782px; width: 220px; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- サイドバー -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>NowTask</h1>
+                <div class="date-nav">
+                    <button id="prev-day" title="前の日">‹</button>
+                    <span id="current-date"></span>
+                    <button id="next-day" title="次の日">›</button>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h2>クイック追加</h2>
+                <input type="text" id="quick-add-input" placeholder="例: 10時-11時半 企画会議">
+                <button id="add-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>タスクを追加</span>
+                </button>
+            </div>
+
+            <div class="sidebar-section">
+                <h2>ツール</h2>
+                <div class="control-group">
+                    <button id="undo-btn">元に戻す (Undo)</button>
+                    <button id="redo-btn">やり直す (Redo)</button>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                 <h2>フィルター</h2>
+                 <div class="control-group">
+                    <select id="priority-filter">
+                        <option value="all">すべての優先度</option>
+                        <option value="high">高</option>
+                        <option value="medium">中</option>
+                        <option value="low">低</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h2>今日の統計</h2>
+                <div id="stats">
+                    <div>
+                        <div class="label">タスク</div>
+                        <div class="value" id="task-count">0</div>
+                    </div>
+                    <div>
+                        <div class="label">完了</div>
+                        <div class="value" id="completed-count">0</div>
+                    </div>
+                    <div>
+                        <div class="label">残り</div>
+                        <div class="value" id="remaining-count">0</div>
+                    </div>
+                     <div>
+                        <div class="label">完了率</div>
+                        <div class="value" id="completion-rate">0%</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <!-- タイムライン -->
+            <div class="timeline-container">
+                <div id="timeline">
+                    <!-- 時間マーカーとタスクカードはJSで生成 -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html> 
+```
+
+```js
+// Helper to format Date->YYYY-MM-DD
+const formatDate = (date) => {
+    return date.toISOString().split('T')[0];
+};
+
+// 共通のユーティリティ関数
+class TimeUtils {
+  static timeToMinutes(timeString) {
+    // "09:30" → 9 * 60 + 30 = 570分
+    const [hours, minutes] = timeString.split(':').map(Number);
+    return hours * 60 + minutes;
+  }
+
+  static minutesToTime(minutes) {
+    // 570 → "09:30"
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  }
+
+  static isValidTimeFormat(timeString) {
+    // HH:MM形式の時間が有効かチェック
+    if (!timeString || typeof timeString !== 'string') return false;
+    
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(timeString)) return false;
+    
+    const [hours, minutes] = timeString.split(':').map(Number);
+    return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+  }
+}
+
+// アプリケーション設定
+class AppConfig {
+  static get DEFAULT_TASK_DURATION() { return 60; } // 1時間（分）
+  static get DEFAULT_START_TIME() { return '09:00'; }
+  static get MINUTES_PER_HOUR() { return 60; }
+  static get HOURS_PER_DAY() { return 24; }
+}
+
+class TaskRepository {
+  constructor(dateKey='tasks') {
+    this.dateKey = dateKey;
+    const stored = localStorage.getItem(this.dateKey);
+    this.tasks = stored ? JSON.parse(stored) : [];
+  }
+
+  save(task) {
+    // 既存のタスクを取得
+    const tasks = this.findAll();
+    
+    // 同じIDのタスクがあれば更新、なければ追加
+    const existingIndex = tasks.findIndex(t => t.id === task.id);
+    if (existingIndex >= 0) {
+      tasks[existingIndex] = task;
+    } else {
+      tasks.push(task);
+    }
+    
+    // localStorageに保存
+    localStorage.setItem(this.dateKey, JSON.stringify(tasks));
+  }
+
+  findById(id) {
+    const tasks = this.findAll();
+    return tasks.find(task => task.id === id);
+  }
+
+  findAll() {
+    const data = localStorage.getItem(this.dateKey);
+    return data ? JSON.parse(data) : [];
+  }
+
+  delete(taskId) {
+    const tasks = this.findAll();
+    const index = tasks.findIndex(t => t.id === taskId);
+    if (index === -1) return false;
+    tasks.splice(index, 1);
+    localStorage.setItem(this.dateKey, JSON.stringify(tasks));
+    return true;
+  }
+}
+
+class LaneCalculator {
+  calculateLanes(tasks) {
+    // タスクのコピーを作成してlaneプロパティを追加
+    const result = tasks.map(task => ({ ...task, lane: 0 }));
+    
+    // 各タスクに対してレーンを計算
+    for (let i = 0; i < result.length; i++) {
+      result[i].lane = this._findAvailableLane(result[i], result.slice(0, i));
+    }
+    
+    return result;
+  }
+
+  _findAvailableLane(currentTask, previousTasks) {
+    let lane = 1;
+    
+    // レーン1から順番に空いているレーンを探す
+    while (true) {
+      // 現在のレーンに重なるタスクがあるかチェック
+      const hasConflict = previousTasks.some(task => 
+        task.lane === lane && this._isTimeOverlap(currentTask, task)
+      );
+      
+      if (!hasConflict) {
+        return lane; // 空いているレーンが見つかった
+      }
+      
+      lane++; // 次のレーンを試す
+    }
+  }
+
+  _isTimeOverlap(task1, task2) {
+    // 時間文字列を分に変換（例: "09:30" → 570分）
+    const start1 = TimeUtils.timeToMinutes(task1.startTime);
+    const end1 = TimeUtils.timeToMinutes(task1.endTime);
+    const start2 = TimeUtils.timeToMinutes(task2.startTime);
+    const end2 = TimeUtils.timeToMinutes(task2.endTime);
+    
+    // 重なりの判定：一方の終了時間が他方の開始時間より後で、
+    // かつ一方の開始時間が他方の終了時間より前
+    return start1 < end2 && start2 < end1;
+  }
+}
+
+class DragUtils {
+  static pixelDeltaToMinutes(deltaY) {
+    return Math.round(deltaY); // 1px = 1min
+  }
+
+  static clampTime(minutes) {
+    if (minutes < 0) return 0;
+    if (minutes > 1439) return 1439;
+    return minutes;
+  }
+}
+
+class Renderer {
+  constructor(app) {
+    this.app = app;
+  }
+
+  init() {
+    this._setupEventListeners();
+    this._renderTimeMarkers();
+    this.renderTimeline();
+    this.updateStats();
+  }
+
+  _setupEventListeners() {
+    const timeline = document.getElementById('timeline');
+    // クリックイベントを委任
+    timeline.addEventListener('click', (e) => {
+      const card = e.target.closest('.task-card');
+      if (card && !card.classList.contains('editing')) {
+        this.app._toggleTaskCompletion(card.id);
+      }
+    });
+
+    // ダブルクリックイベントを委任
+    timeline.addEventListener('dblclick', (e) => {
+      const card = e.target.closest('.task-card');
+      if (card) {
+        const task = this.app.repository.findById(card.id);
+        if (task) {
+          this.app._startInlineEdit(card, task);
+        }
+      }
+    });
+  }
+
+  renderTimeline() {
+    const timeline = document.getElementById('timeline');
+    const existingCards = timeline.querySelectorAll('.task-card');
+    existingCards.forEach(c => c.remove());
+
+    let tasks = this.app.repository.findAll();
+    
+    const filter = this.app.priorityFilter;
+    if (filter !== 'all') {
+      tasks = tasks.filter(task => task.priority === filter);
+    }
+    
+    const tasksWithLanes = this.app.laneCalculator.calculateLanes(tasks);
+    tasksWithLanes.forEach(task => this._renderTaskCard(task));
+  }
+
+  _renderTaskCard(task) {
+    const timeline = document.getElementById('timeline');
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.id = task.id;
+    if (task.completed) card.classList.add('completed');
+
+    card.setAttribute('data-task-id', task.id);
+    card.setAttribute('data-lane', task.lane);
+    card.setAttribute('data-priority', task.priority);
+    card.textContent = task.title;
+
+    // ★変更点：クリックとダブルクリックのリスナーを削除
+    // card.addEventListener('click', () => this.app._toggleTaskCompletion(task.id));
+    // card.addEventListener('dblclick', () => this.app._startInlineEdit(card, task));
+    
+    // contextmenuは元のまま
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (confirm('このタスクを削除しますか？')) this.app._deleteTask(task.id);
+    });
+
+    this._addDragAndResizeListeners(card, task);
+    this._setCardPosition(card, task);
+    timeline.appendChild(card);
+  }
+  
+  _setCardPosition(card, task) {
+    // 位置サイズ
+    const startMin = TimeUtils.timeToMinutes(task.startTime);
+    const endMin = TimeUtils.timeToMinutes(task.endTime);
+    const dur = endMin - startMin;
+    card.style.top = startMin + 'px';
+    card.style.height = dur + 'px';
+
+    // ドラッグ
+    card.style.touchAction = 'none';
+    card.addEventListener('pointerdown', (e) => {
+      // ★変更点：preventDefaultをすぐには呼ばない
+      // e.preventDefault(); 
+      const startY = e.clientY;
+      const originTop = parseInt(card.style.top, 10);
+      let moved = false; // ★移動したかどうかのフラグ
+
+      const onMove = mEvt => {
+        // ★最初のmoveイベントでpreventDefaultを呼ぶ
+        if (!moved) {
+          mEvt.preventDefault(); 
+          card.style.opacity = 0.6;
+          moved = true;
+        }
+        card.style.top = originTop + (mEvt.clientY - startY) + 'px';
+      };
+
+      const onUp = uEvt => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        // ★移動があった場合のみロジックを適用
+        if (moved) {
+          card.style.opacity = 1;
+          const delta = uEvt.clientY - startY;
+          this.app._applyDrag(task.id, delta);
+        }
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  }
+
+  _addDragAndResizeListeners(card, task) {
+    // ドラッグ＆ドロップ、リサイズのリスナーはまだ実装されていないので、ここでは何もしない
+  }
+
+  _renderTimeMarkers() {
+    const timeline = document.getElementById('timeline');
+    // 重複描画防止
+    if (timeline.querySelector('.time-marker')) return;
+    for (let h = 0; h < AppConfig.HOURS_PER_DAY; h++) {
+      const m = document.createElement('div');
+      m.className = 'time-marker';
+      m.textContent = h.toString().padStart(2, '0') + ':00';
+      m.style.top = (h * AppConfig.MINUTES_PER_HOUR) + 'px';
+      timeline.appendChild(m);
+    }
+  }
+
+  updateStats() {
+    const tasks = this.app.repository.findAll();
+    const done = tasks.filter(t => t.completed);
+    const remaining = tasks.length - done.length;
+    const rate = tasks.length === 0 ? 0 : Math.round((done.length / tasks.length) * 100);
+    
+    // 新しいHTML構造に合わせて、個別の要素を更新
+    const taskCountEl = document.getElementById('task-count');
+    const completedCountEl = document.getElementById('completed-count');
+    const remainingCountEl = document.getElementById('remaining-count');
+    const completionRateEl = document.getElementById('completion-rate');
+
+    if (taskCountEl) taskCountEl.textContent = tasks.length;
+    if (completedCountEl) completedCountEl.textContent = done.length;
+    if (remainingCountEl) remainingCountEl.textContent = remaining;
+    if (completionRateEl) completionRateEl.textContent = rate + '%';
+  }
+}
+
+class TaskApp {
+  constructor() {
+    this.currentDate = formatDate(new Date());
+    this.repository = new TaskRepository(this.currentDate);
+    this.laneCalculator = new LaneCalculator();
+    this.renderer = new Renderer(this);
+    this.priorityFilter = 'all';
+    this.undoStack = [];
+    this.redoStack = [];
+  }
+
+  init() {
+    this._setupEventListeners();
+    this.renderer.init();
+    const dateEl = document.getElementById('current-date');
+    if (dateEl) dateEl.textContent = this.currentDate;
+  }
+
+  _setupEventListeners() {
+    const addButton = document.getElementById('add-button');
+    const quickInput = document.getElementById('quick-add-input');
+
+    addButton.addEventListener('click', () => {
+      this._handleQuickAdd();
+    });
+
+    quickInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this._handleQuickAdd();
+      }
+    });
+
+    // フィルターのイベントリスナー
+    const filterSelect = document.getElementById('priority-filter');
+    filterSelect.addEventListener('change', (e) => {
+      this.setPriorityFilter(e.target.value);
+    });
+
+    // 日付ナビゲーション
+    const prevBtn = document.getElementById('prev-day');
+    const nextBtn = document.getElementById('next-day');
+    if (prevBtn && nextBtn) {
+      prevBtn.addEventListener('click', () => this.goToPrevDay());
+      nextBtn.addEventListener('click', () => this.goToNextDay());
+    }
+
+    // アンドゥ／リドゥボタン
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    if (undoBtn && redoBtn) {
+      undoBtn.addEventListener('click', () => this.undo());
+      redoBtn.addEventListener('click', () => this.redo());
+    }
+  }
+
+  setPriorityFilter(priority) {
+    this.priorityFilter = priority;
+    this.renderer.renderTimeline();
+  }
+
+  _handleQuickAdd() {
+    const quickInput = document.getElementById('quick-add-input');
+    const title = quickInput.value.trim();
+    
+    if (!title) return;
+
+    // 新しいタスクを作成（設定値を使用）
+    const task = this._createDefaultTask(title);
+
+    // 履歴に追加（追加操作として記録）
+    this._pushHistory({
+      type: 'add',
+      task: { ...task }
+    });
+
+    this.repository.save(task);
+    quickInput.value = '';
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+  }
+
+  _createDefaultTask(title) {
+    const startTime = AppConfig.DEFAULT_START_TIME;
+    const startMinutes = TimeUtils.timeToMinutes(startTime);
+    const endMinutes = startMinutes + AppConfig.DEFAULT_TASK_DURATION;
+    const endTime = TimeUtils.minutesToTime(endMinutes);
+
+    return {
+      id: 'task-' + Date.now(),
+      title: title,
+      startTime: startTime,
+      endTime: endTime,
+      priority: 'medium',
+      completed: false
+    };
+  }
+
+  _toggleTaskCompletion(taskId) {
+    const task = this.repository.findById(taskId);
+    if (task) {
+      this._pushHistory({
+        type: 'toggle',
+        taskId: taskId,
+        previousState: task.completed
+      });
+      task.completed = !task.completed;
+      this.repository.save(task);
+      
+      const card = document.getElementById(taskId);
+      if (card) {
+        card.classList.toggle('completed');
+      }
+      this.renderer.updateStats();
+    }
+  }
+
+  _startInlineEdit(card, task) {
+    // すでに編集モードなら無視
+    if(card.querySelector('input')) return;
+    const input=document.createElement('input');
+    input.type='text';
+    input.value=task.title;
+    input.className='inline-edit';
+    // 既存テキストを一時退避して置き換え
+    card.textContent='';
+    card.appendChild(input);
+    input.focus();
+    input.select();
+    card.classList.add('editing');
+
+    const commit=()=>{
+      const newTitle=input.value.trim();
+      card.classList.remove('editing');
+      card.removeChild(input);
+      // 元タイトルに戻す (一旦) → renderTimeline で置き換わる
+      card.textContent=newTitle||task.title;
+      if(newTitle && newTitle!==task.title){
+        // ビジネスロジックで保存・再描画
+        this._editTask(task.id, {
+          title:newTitle,
+          startTime:task.startTime,
+          endTime:task.endTime,
+          priority:task.priority
+        });
+      }
+    };
+    input.addEventListener('keypress',e=>{if(e.key==='Enter'){commit();}});
+    input.addEventListener('blur', commit);
+  }
+
+  _deleteTask(taskId) {
+    const task = this.repository.findById(taskId);
+    if (!task) return false;
+    
+    // 履歴に追加
+    this._pushHistory({
+      type: 'delete',
+      task: { ...task } // コピーを保存
+    });
+    
+    const deleted = this.repository.delete(taskId);
+    if (deleted) {
+      // UIから直接カードを削除
+      const card = document.getElementById(taskId);
+      if (card) {
+        card.remove();
+      }
+      this.renderer.updateStats();
+    }
+    return deleted;
+  }
+
+  _applyDrag(taskId, deltaY) {
+    const task = this.repository.findById(taskId);
+    if (!task) return false;
+
+    // 履歴に追加（変更前のタスクを保存）
+    this._pushHistory({
+      type: 'drag',
+      taskId: taskId,
+      previousTask: { ...task }
+    });
+
+    const deltaMinutes = DragUtils.pixelDeltaToMinutes(deltaY);
+    const startMin = TimeUtils.timeToMinutes(task.startTime) + deltaMinutes;
+    const endMin = TimeUtils.timeToMinutes(task.endTime) + deltaMinutes;
+
+    const clampedStart = DragUtils.clampTime(startMin);
+    const duration = TimeUtils.timeToMinutes(task.endTime) - TimeUtils.timeToMinutes(task.startTime);
+    let clampedEnd = clampedStart + duration;
+    if (clampedEnd > 1440) {
+      clampedEnd = 1440;
+      // shift start accordingly
+      clampedStart = clampedEnd - duration;
+    }
+
+    const updatedTask = {
+      ...task,
+      startTime: TimeUtils.minutesToTime(clampedStart),
+      endTime: TimeUtils.minutesToTime(clampedEnd)
+    };
+
+    this.repository.save(updatedTask);
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+    return true;
+  }
+
+  _applyResize(taskId, deltaMinutes, edge) {
+    const task = this.repository.findById(taskId);
+    if (!task) return;
+
+    let startMin = TimeUtils.timeToMinutes(task.startTime);
+    let endMin = TimeUtils.timeToMinutes(task.endTime);
+
+    if (edge === 'start') {
+      startMin = DragUtils.clampTime(startMin + deltaMinutes);
+      // 少なくとも1分の幅を確保
+      if (startMin >= endMin) startMin = endMin - 1;
+    } else if (edge === 'end') {
+      endMin = DragUtils.clampTime(endMin + deltaMinutes);
+      if (endMin <= startMin) endMin = startMin + 1;
+    } else {
+      return; // invalid edge
+    }
+
+    task.startTime = TimeUtils.minutesToTime(startMin);
+    task.endTime = TimeUtils.minutesToTime(endMin);
+    this.repository.save(task);
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+  }
+
+  _recreateRepository() {
+    this.repository = new TaskRepository(this.currentDate);
+  }
+
+  setDate(newDateStr){
+    this.currentDate = newDateStr;
+    this._recreateRepository();
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+    const dateEl = document.getElementById('current-date');
+    if (dateEl) dateEl.textContent = this.currentDate;
+  }
+
+  goToPrevDay(){
+    const d = new Date(this.currentDate);
+    d.setDate(d.getDate()-1);
+    this.setDate(formatDate(d));
+  }
+
+  goToNextDay(){
+    const d = new Date(this.currentDate);
+    d.setDate(d.getDate()+1);
+    this.setDate(formatDate(d));
+  }
+
+  _editTask(taskId, editData) {
+    // タスクを取得
+    const task = this.repository.findById(taskId);
+    if (!task) {
+      console.warn(`Task with id ${taskId} not found`);
+      return false;
+    }
+
+    // バリデーション
+    if (!this._validateEditData(editData)) {
+      console.warn('Invalid edit data provided');
+      return false;
+    }
+
+    // 履歴に追加（変更前のタスクを保存）
+    this._pushHistory({
+      type: 'edit',
+      taskId: taskId,
+      previousTask: { ...task }, // 変更前の状態
+      newTask: { ...task, ...editData } // 変更後の状態
+    });
+
+    // タスクを更新（IDと完了状態は保持）
+    const updatedTask = {
+      ...task,
+      title: editData.title,
+      startTime: editData.startTime,
+      endTime: editData.endTime,
+      priority: editData.priority
+    };
+
+    // 保存
+    this.repository.save(updatedTask);
+
+    // 画面を更新
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+
+    return true;
+  }
+
+  _validateEditData(editData) {
+    // 必須フィールドのチェック
+    if (!editData || typeof editData !== 'object') return false;
+    if (!editData.title || typeof editData.title !== 'string') return false;
+    if (!editData.startTime || !editData.endTime) return false;
+    if (!editData.priority) return false;
+
+    // 時間フォーマットのチェック
+    if (!TimeUtils.isValidTimeFormat(editData.startTime)) return false;
+    if (!TimeUtils.isValidTimeFormat(editData.endTime)) return false;
+
+    // 優先度の値チェック
+    const validPriorities = ['low', 'medium', 'high'];
+    if (!validPriorities.includes(editData.priority)) return false;
+
+    // 開始時間が終了時間より前かチェック
+    const startMinutes = TimeUtils.timeToMinutes(editData.startTime);
+    const endMinutes = TimeUtils.timeToMinutes(editData.endTime);
+    if (startMinutes >= endMinutes) return false;
+
+    return true;
+  }
+
+  _showEditDialog(taskId) {
+    const task = this.repository.findById(taskId);
+    if (!task) return;
+
+    // シンプルなプロンプトベースの編集ダイアログ
+    const newTitle = prompt('タスクのタイトルを編集:', task.title);
+    if (newTitle === null) return; // キャンセルされた場合
+
+    const newStartTime = prompt('開始時間 (HH:MM):', task.startTime);
+    if (newStartTime === null) return;
+
+    const newEndTime = prompt('終了時間 (HH:MM):', task.endTime);
+    if (newEndTime === null) return;
+
+    const newPriority = prompt('優先度 (low/medium/high):', task.priority);
+    if (newPriority === null) return;
+
+    // 編集を実行
+    const success = this._editTask(taskId, {
+      title: newTitle.trim(),
+      startTime: newStartTime.trim(),
+      endTime: newEndTime.trim(),
+      priority: newPriority.trim()
+    });
+
+    if (!success) {
+      alert('編集に失敗しました。入力内容を確認してください。');
+    }
+  }
+
+  // アンドゥ／リドゥ機能
+  _pushHistory(action) {
+    this.undoStack.push(action);
+    // 新しいアクションが追加されたらリドゥスタックをクリア
+    this.redoStack = [];
+    // 履歴の上限を設定（メモリ節約）
+    if (this.undoStack.length > 50) {
+      this.undoStack.shift();
+    }
+  }
+
+  undo() {
+    if (this.undoStack.length === 0) return false;
+    
+    const action = this.undoStack.pop();
+    this.redoStack.push(action);
+    
+    // アクションを逆実行
+    this._executeAction(action, true);
+    return true;
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) return false;
+    
+    const action = this.redoStack.pop();
+    this.undoStack.push(action);
+    
+    // アクションを再実行
+    this._executeAction(action, false);
+    return true;
+  }
+
+  _executeAction(action, isUndo) {
+    switch (action.type) {
+      case 'delete':
+        if (isUndo) {
+          // 削除を取り消し（復元）
+          this.repository.save(action.task);
+        } else {
+          // 削除を再実行
+          this.repository.delete(action.task.id);
+        }
+        break;
+      case 'toggle':
+        if (isUndo) {
+          // 完了状態を元に戻す
+          const task = this.repository.findById(action.taskId);
+          if (task) {
+            task.completed = action.previousState;
+            this.repository.save(task);
+          }
+        } else {
+          // 完了状態を再変更
+          const task = this.repository.findById(action.taskId);
+          if (task) {
+            task.completed = !action.previousState;
+            this.repository.save(task);
+          }
+        }
+        break;
+      case 'edit':
+        if (isUndo) {
+          // 編集を取り消し
+          this.repository.save(action.previousTask);
+        } else {
+          // 編集を再実行
+          this.repository.save(action.newTask);
+        }
+        break;
+      case 'drag':
+        if (isUndo) {
+          // ドラッグを取り消し
+          this.repository.save(action.previousTask);
+        } else {
+          // ドラッグを再実行（現在の状態を保持）
+          const currentTask = this.repository.findById(action.taskId);
+          if (currentTask) {
+            this.repository.save(currentTask);
+          }
+        }
+        break;
+      case 'add':
+        if (isUndo) {
+          // 追加を取り消し（削除）
+          this.repository.delete(action.task.id);
+        } else {
+          // 追加を再実行
+          this.repository.save(action.task);
+        }
+        break;
+    }
+    
+    // UI更新
+    this.renderer.renderTimeline();
+    this.renderer.updateStats();
+  }
+}
+
+// DOMが完全に読み込まれてからアプリケーションを初期化
+document.addEventListener('DOMContentLoaded', () => {
+  const app = new TaskApp();
+  app.init();
+});
+
+// モジュールとしてエクスポート (Node.jsテスト用)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    TaskApp,
+    TaskRepository,
+    Renderer,
+    TimeUtils,
+    LaneCalculator,
+    formatDate
+  };
+} 
+```
