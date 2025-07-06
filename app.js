@@ -189,8 +189,10 @@ export class LaneCalculator {
 }
 
 export class DragUtils {
-  static pixelDeltaToMinutes(deltaY) {
-    return deltaY; // 1px = 1分
+  /** ピクセル差分を分に変換（スケール対応） */
+  static pixelDeltaToMinutes(deltaY, scale = 1) {
+    if (scale === 0) return 0;
+    return Math.round(deltaY / scale);
   }
 
   static clampTime(minutes) {
@@ -205,13 +207,26 @@ export class Renderer {
     this.app = app;
     this.document = doc || (typeof document !== 'undefined' ? document : null);
     this.observer = null;
+    // px / minute の倍率 (デフォルト: 1)
+    this.scale = 1;
   }
+
+  /** スケールを変更しタイムラインを再描画 */
+  setScale(mode) {
+    const map = { minute: 1, hour: 0.2, day: 0.05 };
+    this.scale = map[mode] ?? 1;
+    this.renderTimeline();
+  }
+
+  /** 分 → px 変換 */
+  minutesToPixels(min) { return min * this.scale; }
 
   init() {
     this._setupIntersectionObserver();
     this._setupEventListeners();
     this._renderTimeMarkers();
     this.renderTimeline();
+    this.renderTaskList();
     this.updateStats();
   }
 
@@ -318,6 +333,14 @@ export class Renderer {
     if (undoBtn && redoBtn) {
       undoBtn.addEventListener('click', () => this.app.undo());
       redoBtn.addEventListener('click', () => this.app.redo());
+    }
+
+    // スケール切替
+    const scaleSelect = this.document.getElementById('scale-select');
+    if (scaleSelect) {
+      scaleSelect.addEventListener('change', (e) => {
+        this.setScale(e.target.value);
+      });
     }
 
     // --- ダイアログのイベントリスナー ---
@@ -445,6 +468,10 @@ export class Renderer {
     const timeline = this.document.getElementById('timeline');
     if (!timeline) return; // ガード節
 
+    // タイムライン全体の高さをスケールに合わせて設定
+    timeline.style.position = 'relative';
+    timeline.style.height = this.minutesToPixels(AppConfig.HOURS_PER_DAY * AppConfig.MINUTES_PER_HOUR) + 'px';
+
     timeline.innerHTML = ''; // 一旦中身をクリア
     const tasks = this.app.repository.findAll()
       .filter(task => {
@@ -463,6 +490,9 @@ export class Renderer {
 
     this._renderTimeMarkers(); // 時間マーカーを再描画
     this._renderSentinels();
+
+    // タスク一覧も更新
+    this.renderTaskList();
   }
 
   _renderTaskCard(task) {
@@ -496,15 +526,15 @@ export class Renderer {
     const startMin = TimeUtils.timeToMinutes(task.startTime);
     const endMin = TimeUtils.timeToMinutes(task.endTime);
     const dur = endMin - startMin;
-    card.style.top = startMin + 'px';
-    card.style.height = dur + 'px';
+    card.style.top = this.minutesToPixels(startMin) + 'px';
+    card.style.height = this.minutesToPixels(dur) + 'px';
 
     // ドラッグ
     card.style.touchAction = 'none';
     card.addEventListener('pointerdown', (e) => {
       e.preventDefault(); 
       const startY = e.clientY;
-      const originTop = parseInt(card.style.top, 10);
+      const originTop = parseFloat(card.style.top);
       let moved = false; 
 
       const onMove = (mEvt) => {
@@ -543,7 +573,7 @@ export class Renderer {
     card.addEventListener('pointerdown', (e) => {
       e.preventDefault(); 
       const startY = e.clientY;
-      const originTop = parseInt(card.style.top, 10);
+      const originTop = parseFloat(card.style.top);
       let moved = false; 
 
       const onMove = (mEvt) => {
@@ -578,7 +608,7 @@ export class Renderer {
       e.preventDefault();
       e.stopPropagation();
       const startY = e.clientY;
-      const startHeight = parseInt(card.style.height, 10);
+      const startHeight = parseFloat(card.style.height);
 
       const onMove = (mEvt) => {
         const deltaY = mEvt.clientY - startY;
@@ -606,8 +636,8 @@ export class Renderer {
       e.preventDefault();
       e.stopPropagation();
       const startY = e.clientY;
-      const startTop = parseInt(card.style.top, 10);
-      const startHeight = parseInt(card.style.height, 10);
+      const startTop = parseFloat(card.style.top);
+      const startHeight = parseFloat(card.style.height);
 
       const onMove = (mEvt) => {
         const deltaY = mEvt.clientY - startY;
@@ -688,7 +718,7 @@ export class Renderer {
       const m = this.document.createElement('div');
       m.className = 'time-marker';
       m.textContent = h.toString().padStart(2, '0') + ':00';
-      m.style.top = (h * AppConfig.MINUTES_PER_HOUR) + 'px';
+      m.style.top = this.minutesToPixels(h * AppConfig.MINUTES_PER_HOUR) + 'px';
       timeline.appendChild(m);
     }
 
@@ -717,7 +747,7 @@ export class Renderer {
     currentTimeLine.className = 'current-time-line';
     currentTimeLine.style.position = 'absolute';
     currentTimeLine.style.left = '0';
-    currentTimeLine.style.top = currentMinutes + 'px';
+    currentTimeLine.style.top = this.minutesToPixels(currentMinutes) + 'px';
     currentTimeLine.style.height = '2px';
     currentTimeLine.style.width = '100%';
     currentTimeLine.style.backgroundColor = '#ff4444';
@@ -743,20 +773,20 @@ export class Renderer {
 
   updateStats() {
     const tasks = this.app.repository.findAll();
-    const done = tasks.filter(t => t.completed);
-    const remaining = tasks.length - done.length;
-    const rate = tasks.length === 0 ? 0 : Math.round((done.length / tasks.length) * 100);
-    
-    // 新しいHTML構造に合わせて、個別の要素を更新
-    const taskCountEl = this.document.getElementById('task-count');
-    const completedCountEl = this.document.getElementById('completed-count');
-    const remainingCountEl = this.document.getElementById('remaining-count');
-    const completionRateEl = this.document.getElementById('completion-rate');
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.completed).length;
+    const remaining = total - completed;
+    const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-    if (taskCountEl) taskCountEl.textContent = tasks.length;
-    if (completedCountEl) completedCountEl.textContent = done.length;
-    if (remainingCountEl) remainingCountEl.textContent = remaining;
-    if (completionRateEl) completionRateEl.textContent = rate + '%';
+    const doc = this.document;
+    const set = (id, val) => {
+      const el = doc.getElementById(id);
+      if (el) el.textContent = val;
+    };
+    set('task-count', total);
+    set('completed-count', completed);
+    set('remaining-count', remaining);
+    set('completion-rate', rate + '%');
   }
 
   renderTimelineForDate(dateStr, position) {
@@ -799,6 +829,30 @@ export class Renderer {
     
     // 番兵は常に監視下にあるべきなので、再設定は不要かもしれない
     this._renderSentinels();
+  }
+
+  /** タスク一覧をサイドバーにレンダリング */
+  renderTaskList() {
+    const listEl = this.document.getElementById('task-list');
+    if (!listEl) return; // テストやUI無し環境
+
+    listEl.innerHTML = '';
+
+    // フィルタリングと並び替え
+    const tasks = this.app.repository.findAll()
+      .filter(task => {
+        if (this.app.priorityFilter === 'all') return true;
+        return task.priority === this.app.priorityFilter;
+      })
+      .sort((a, b) => TimeUtils.timeToMinutes(a.startTime) - TimeUtils.timeToMinutes(b.startTime));
+
+    tasks.forEach(task => {
+      const li = this.document.createElement('li');
+      li.className = 'task-list-item';
+      if (task.completed) li.classList.add('completed');
+      li.textContent = `${task.startTime}-${task.endTime} ${task.title}`;
+      listEl.appendChild(li);
+    });
   }
 }
 
@@ -910,6 +964,14 @@ export class TaskApp {
     if (undoBtn && redoBtn) {
       undoBtn.addEventListener('click', () => this.undo());
       redoBtn.addEventListener('click', () => this.redo());
+    }
+
+    // スケール切替
+    const scaleSelect = this.document.getElementById('scale-select');
+    if (scaleSelect) {
+      scaleSelect.addEventListener('change', (e) => {
+        this.renderer.setScale(e.target.value);
+      });
     }
 
     // 完了済みタスク削除ボタン
@@ -1137,7 +1199,7 @@ export class TaskApp {
     const task = this.repository.findById(taskId);
     if (!task) return false;
 
-    const deltaMinutes = DragUtils.pixelDeltaToMinutes(deltaY);
+    const deltaMinutes = DragUtils.pixelDeltaToMinutes(deltaY, this.renderer.scale);
     const startMinOrig = TimeUtils.timeToMinutes(task.startTime);
     const endMinOrig = TimeUtils.timeToMinutes(task.endTime);
 
@@ -1176,7 +1238,7 @@ export class TaskApp {
     const task = this.repository.findById(taskId);
     if (!task) return false;
 
-    const deltaMinutes = DragUtils.pixelDeltaToMinutes(deltaY);
+    const deltaMinutes = DragUtils.pixelDeltaToMinutes(deltaY, this.renderer.scale);
     const startMin = TimeUtils.timeToMinutes(task.startTime);
     let endMin = TimeUtils.timeToMinutes(task.endTime);
 
@@ -1451,7 +1513,7 @@ export class TaskApp {
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     
     // 現在時刻の位置（px）を計算
-    const targetPosition = currentMinutes;
+    const targetPosition = currentMinutes * this.renderer.scale;
     
     // 画面の中央に表示するために、半分の高さ分を引く
     const containerHeight = timelineContainer.clientHeight;

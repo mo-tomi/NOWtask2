@@ -496,6 +496,12 @@
                     </button>
                     <button id="undo-btn">元に戻す (Undo)</button>
                     <button id="redo-btn">やり直す (Redo)</button>
+                    <label for="scale-select" style="margin-left:4px; font-size:12px;">表示:</label>
+                    <select id="scale-select" style="font-size:12px;">
+                        <option value="minute">分</option>
+                        <option value="hour">時間</option>
+                        <option value="day">日</option>
+                    </select>
                 </div>
             </div>
 
@@ -553,6 +559,13 @@
                         <div class="value" id="completion-rate">0%</div>
                     </div>
                 </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h2>タスク一覧</h2>
+                <ul id="task-list" style="list-style:none; padding-left:0; max-height:200px; overflow-y:auto;">
+                    <!-- 動的にタスクが挿入される -->
+                </ul>
             </div>
 
             <div class="sidebar-section">
