@@ -213,7 +213,7 @@ export class Renderer {
 
   /** スケールを変更しタイムラインを再描画 */
   setScale(mode) {
-    const map = { minute: 1, hour: 0.2, day: 0.05 };
+    const map = { second: 60, minute: 1, hour: 0.2, day: 0.05 };
     this.scale = map[mode] ?? 1;
     this.renderTimeline();
   }
