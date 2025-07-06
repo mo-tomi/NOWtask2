@@ -217,48 +217,62 @@ export class Renderer {
 
     timeline.addEventListener('drop', (e) => {
       e.preventDefault();
-      const taskId = e.dataTransfer.getData('text/plain');
-      if (!taskId) return;
+      const data = e.dataTransfer.getData('text/plain');
+      if (!data) return;
 
-      // 正しい実装：縦方向（Y軸）が時間軸
+      // ドロップ位置の計算
       const rect = timeline.getBoundingClientRect();
       const dropY = e.clientY - rect.top;
-      // 1px = 1分の対応関係
       let newStartMinutes = Math.max(0, Math.min(1439, Math.round(dropY)));
-      
-      const task = this.app.repository.findById(taskId);
-      if (!task) return;
 
-      // 既存の期間を維持
-      const currentStartMin = TimeUtils.timeToMinutes(task.startTime);
-      const currentEndMin = TimeUtils.timeToMinutes(task.endTime);
-      const duration = currentEndMin - currentStartMin;
-      
-      let newEndMinutes = newStartMinutes + duration;
-      if (newEndMinutes > 1439) {
-        newEndMinutes = 1439;
-        newStartMinutes = newEndMinutes - duration;
+      // テンプレートからのドロップかタスクからのドロップかを判別
+      if (data.startsWith('template:')) {
+        // テンプレートからのドロップ
+        const templateKey = data.replace('template:', '');
+        if (templateKey === 'sleep') {
+          // 睡眠テンプレートの場合は専用ダイアログを表示
+          this.app._showSleepDialog(newStartMinutes);
+        } else {
+          this.app.addTemplateTask(templateKey, newStartMinutes);
+        }
+
+      } else {
+        // 既存タスクからのドロップ
+        const taskId = data;
+        const task = this.app.repository.findById(taskId);
+        if (!task) return;
+
+        // 既存の期間を維持
+        const currentStartMin = TimeUtils.timeToMinutes(task.startTime);
+        const currentEndMin = TimeUtils.timeToMinutes(task.endTime);
+        const duration = currentEndMin - currentStartMin;
+        
+        let newEndMinutes = newStartMinutes + duration;
+        if (newEndMinutes > 1439) {
+          newEndMinutes = 1439;
+          newStartMinutes = newEndMinutes - duration;
+        }
+
+        // タスクを更新（履歴も記録）
+        const previousTask = { ...task };
+        const updatedTask = {
+          ...task,
+          startTime: TimeUtils.minutesToTime(newStartMinutes),
+          endTime: TimeUtils.minutesToTime(newEndMinutes)
+        };
+
+        // 履歴に追加
+        this.app._pushHistory({
+          type: 'drag',
+          taskId: taskId,
+          previousTask: previousTask,
+          newTask: updatedTask
+        });
+
+        this.app.repository.save(updatedTask);
+        this.app.renderer.renderTimeline();
+        this.app.renderer.updateStats();
       }
-
-      // タスクを更新（履歴も記録）
-      const previousTask = { ...task };
-      const updatedTask = {
-        ...task,
-        startTime: TimeUtils.minutesToTime(newStartMinutes),
-        endTime: TimeUtils.minutesToTime(newEndMinutes)
-      };
-
-      // 履歴に追加
-      this.app._pushHistory({
-        type: 'drag',
-        taskId: taskId,
-        previousTask: previousTask,
-        newTask: updatedTask
-      });
-
-      this.app.repository.save(updatedTask);
-      this.app.renderer.renderTimeline();
-      this.app.renderer.updateStats();
     });
 
     // 完了済みタスク削除ボタン
@@ -301,13 +315,70 @@ export class Renderer {
         });
     }
 
-    // テンプレートボタン
+    // テンプレートカード（クリック & ドラッグ）
     Object.keys(this.app.templates).forEach((key) => {
-      const btn = this.document.getElementById(`template-${key}`);
-      if (btn) {
-        btn.addEventListener('click', () => this.app.addTemplateTask(key));
+      const card = this.document.getElementById(`template-${key}`);
+      if (card) {
+        // クリックでタスク追加（睡眠は特別処理）
+        card.addEventListener('click', () => {
+          if (key === 'sleep') {
+            this.app._showSleepDialog();
+          } else {
+            this.app.addTemplateTask(key);
+          }
+        });
+        
+        // ドラッグ開始
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', `template:${key}`);
+          e.dataTransfer.effectAllowed = 'copy';
+          card.classList.add('dragging');
+        });
+        
+        // ドラッグ終了
+        card.addEventListener('dragend', () => {
+          card.classList.remove('dragging');
+        });
       }
     });
+
+    // 睡眠ダイアログのイベントリスナー
+    const saveSleepBtn = this.document.getElementById('save-sleep-btn');
+    const cancelSleepBtn = this.document.getElementById('cancel-sleep-btn');
+    const sleepDialog = this.document.getElementById('sleep-dialog');
+    const sleepDuration = this.document.getElementById('sleep-duration');
+    const sleepStartTime = this.document.getElementById('sleep-startTime');
+    const sleepEndTime = this.document.getElementById('sleep-endTime');
+
+    if (saveSleepBtn) {
+      saveSleepBtn.addEventListener('click', () => this.app._handleSleepDialogSave());
+    }
+    if (cancelSleepBtn) {
+      cancelSleepBtn.addEventListener('click', () => this.app._hideSleepDialog());
+    }
+    if (sleepDialog) {
+      sleepDialog.addEventListener('click', (e) => {
+        if (e.target.id === 'sleep-dialog') {
+          this.app._hideSleepDialog();
+        }
+      });
+    }
+
+    // 睡眠時間変更時の終了時刻自動計算
+    if (sleepDuration && sleepStartTime && sleepEndTime) {
+      const updateEndTime = () => {
+        const duration = parseInt(sleepDuration.value);
+        const startTime = sleepStartTime.value;
+        if (startTime) {
+          const startMinutes = TimeUtils.timeToMinutes(startTime);
+          const endMinutes = (startMinutes + duration * 60) % (24 * 60);
+          sleepEndTime.value = TimeUtils.minutesToTime(endMinutes);
+        }
+      };
+      sleepDuration.addEventListener('change', updateEndTime);
+      sleepStartTime.addEventListener('change', updateEndTime);
+      updateEndTime(); // 初期値設定
+    }
   }
 
   _setupIntersectionObserver() {
@@ -691,6 +762,10 @@ export class TaskApp {
     this.loadedDates = new Set([this.currentDate]);
     this.priorityFilter = 'all'; // フィルターを初期化
     this.templates = {
+      nightshift: { title: '夜勤', startTime: '17:00', endTime: '23:59' },
+      travel: { title: '移動', startTime: '09:00', endTime: '09:10' },
+      meal: { title: '食事', startTime: '12:00', endTime: '12:30' },
+      sleep: { title: '睡眠', startTime: '22:00', endTime: '06:00' },
       lunch: { title: '昼ごはん', startTime: '12:00', endTime: '13:00' },
       breakfast: { title: '朝ごはん', startTime: '08:00', endTime: '08:30' },
       dinner: { title: '夕ごはん', startTime: '19:00', endTime: '19:30' },
@@ -877,6 +952,92 @@ export class TaskApp {
   _hideEditDialog() {
     const dialog = this.document.getElementById('edit-dialog');
     dialog.style.display = 'none';
+  }
+
+  _showSleepDialog(dropPosition = null) {
+    this.pendingSleepDropPosition = dropPosition; // ドロップ位置を保存
+    const dialog = this.document.getElementById('sleep-dialog');
+    if (dialog) {
+      dialog.style.display = 'flex';
+      
+      // ドロップ位置が指定されている場合、開始時刻を設定
+      if (dropPosition !== null) {
+        const sleepStartTime = this.document.getElementById('sleep-startTime');
+        if (sleepStartTime) {
+          sleepStartTime.value = TimeUtils.minutesToTime(dropPosition);
+          // 終了時刻も再計算
+          this._updateSleepEndTime();
+        }
+      }
+    }
+  }
+
+  _hideSleepDialog() {
+    const dialog = this.document.getElementById('sleep-dialog');
+    if (dialog) dialog.style.display = 'none';
+    this.pendingSleepDropPosition = null;
+  }
+
+  _updateSleepEndTime() {
+    const sleepDuration = this.document.getElementById('sleep-duration');
+    const sleepStartTime = this.document.getElementById('sleep-startTime');
+    const sleepEndTime = this.document.getElementById('sleep-endTime');
+    
+    if (sleepDuration && sleepStartTime && sleepEndTime) {
+      const duration = parseInt(sleepDuration.value);
+      const startTime = sleepStartTime.value;
+      if (startTime) {
+        const startMinutes = TimeUtils.timeToMinutes(startTime);
+        const endMinutes = (startMinutes + duration * 60) % (24 * 60);
+        sleepEndTime.value = TimeUtils.minutesToTime(endMinutes);
+      }
+    }
+  }
+
+  _handleSleepDialogSave() {
+    const sleepDuration = this.document.getElementById('sleep-duration');
+    const sleepStartTime = this.document.getElementById('sleep-startTime');
+    
+    if (sleepDuration && sleepStartTime) {
+      const duration = parseInt(sleepDuration.value);
+      const startTime = sleepStartTime.value;
+      
+      if (startTime) {
+        const startMinutes = TimeUtils.timeToMinutes(startTime);
+        const endMinutes = (startMinutes + duration * 60) % (24 * 60);
+        const endTime = TimeUtils.minutesToTime(endMinutes);
+        
+        // カスタム睡眠タスクを作成
+        const task = {
+          id: `task-sleep-${Date.now()}`,
+          title: `睡眠（${duration}時間）`,
+          startTime: startTime,
+          endTime: endTime,
+          date: this.currentDate,
+          priority: 'medium',
+          completed: false,
+          lane: 1
+        };
+
+        // 適切なレーン計算を行う
+        const allTasks = this.repository.findAll();
+        const tasksWithLanes = this.laneCalculator.calculateLanes([...allTasks, task]);
+        const calculatedTask = tasksWithLanes.find(t => t.id === task.id);
+        task.lane = calculatedTask.lane;
+
+        // 履歴に追加
+        this._pushHistory({
+          type: 'add',
+          task: { ...task }
+        });
+
+        this.repository.save(task);
+        this.renderer.renderTimeline();
+        this.renderer.updateStats();
+        
+        this._hideSleepDialog();
+      }
+    }
   }
 
   _handleDialogSave() {
@@ -1282,20 +1443,54 @@ export class TaskApp {
    * @param {string} name テンプレートキー
    * @returns {boolean} 追加に成功したか
    */
-  addTemplateTask(name) {
+  addTemplateTask(name, dropPosition = null) {
     const tpl = this.templates[name];
     if (!tpl) return false;
+
+    let startTime, endTime;
+
+    if (dropPosition !== null) {
+      // ドロップ位置が指定された場合、その位置から開始
+      const templateStartMin = TimeUtils.timeToMinutes(tpl.startTime);
+      const templateEndMin = TimeUtils.timeToMinutes(tpl.endTime);
+      let duration = templateEndMin - templateStartMin;
+      
+      // 日をまたぐ場合の処理（睡眠など）
+      if (duration <= 0) {
+        duration = (24 * 60) + duration; // 翌日までの時間
+      }
+
+      let newEndMinutes = dropPosition + duration;
+      if (newEndMinutes > 1439) {
+        newEndMinutes = 1439;
+        dropPosition = newEndMinutes - duration;
+      }
+
+      startTime = TimeUtils.minutesToTime(dropPosition);
+      endTime = TimeUtils.minutesToTime(newEndMinutes);
+    } else {
+      // クリックの場合、テンプレートのデフォルト時間を使用
+      startTime = tpl.startTime;
+      endTime = tpl.endTime;
+    }
 
     const task = {
       id: `task-${name}-${Date.now()}`,
       title: tpl.title,
-      startTime: tpl.startTime,
-      endTime: tpl.endTime,
+      startTime: startTime,
+      endTime: endTime,
       date: this.currentDate,
       priority: 'medium',
       completed: false,
       lane: 1,
     };
+
+    // 履歴に追加
+    this._pushHistory({
+      type: 'add',
+      task: { ...task }
+    });
+
     this.repository.save(task);
     if (this.renderer) {
       this.renderer.renderTimeline();

@@ -387,6 +387,51 @@
             cursor: pointer;
         }
 
+        /* テンプレートカード */
+        .template-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .template-card {
+            background: var(--color-card-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius-sm);
+            padding: 8px 12px;
+            cursor: grab;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .template-card:hover {
+            background: var(--color-bg-light);
+            border-color: var(--color-primary);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .template-card:active {
+            cursor: grabbing;
+            transform: scale(0.98);
+        }
+
+        .template-card.dragging {
+            opacity: 0.5;
+        }
+
+        .template-title {
+            font-weight: 600;
+            color: var(--color-text-dark);
+            font-size: 14px;
+        }
+
+        .template-time {
+            font-size: 12px;
+            color: var(--color-text-medium);
+            margin-top: 2px;
+        }
+
         /* タイムライン */
         .timeline {
             position: relative;
@@ -443,6 +488,28 @@
                     </button>
                     <button id="undo-btn">元に戻す (Undo)</button>
                     <button id="redo-btn">やり直す (Redo)</button>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h2>テンプレート</h2>
+                <div class="template-cards">
+                    <div class="template-card" id="template-nightshift" draggable="true" data-template="nightshift">
+                        <div class="template-title">夜勤</div>
+                        <div class="template-time">17:00~9:00</div>
+                    </div>
+                    <div class="template-card" id="template-travel" draggable="true" data-template="travel">
+                        <div class="template-title">移動</div>
+                        <div class="template-time">10分</div>
+                    </div>
+                    <div class="template-card" id="template-meal" draggable="true" data-template="meal">
+                        <div class="template-title">食事</div>
+                        <div class="template-time">30分</div>
+                    </div>
+                    <div class="template-card" id="template-sleep" draggable="true" data-template="sleep">
+                        <div class="template-title">睡眠</div>
+                        <div class="template-time">8時間</div>
+                    </div>
                 </div>
             </div>
 
@@ -534,6 +601,38 @@
             <div class="dialog-actions">
                 <button id="save-edit-btn" class="btn-primary">保存</button>
                 <button id="cancel-edit-btn" class="btn-secondary">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sleep Duration Dialog (hidden by default) -->
+    <div id="sleep-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog-content">
+            <h2>睡眠時間の設定</h2>
+            
+            <label for="sleep-duration">睡眠時間</label>
+            <select id="sleep-duration">
+                <option value="6">6時間</option>
+                <option value="7">7時間</option>
+                <option value="8" selected>8時間</option>
+                <option value="9">9時間</option>
+                <option value="10">10時間</option>
+            </select>
+
+            <div class="time-inputs">
+                <div>
+                    <label for="sleep-startTime">開始時刻</label>
+                    <input type="time" id="sleep-startTime" value="22:00">
+                </div>
+                <div>
+                    <label for="sleep-endTime">終了時刻（自動計算）</label>
+                    <input type="time" id="sleep-endTime" readonly>
+                </div>
+            </div>
+
+            <div class="dialog-actions">
+                <button id="save-sleep-btn" class="btn-primary">作成</button>
+                <button id="cancel-sleep-btn" class="btn-secondary">キャンセル</button>
             </div>
         </div>
     </div>
