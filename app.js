@@ -762,7 +762,7 @@ export class TaskApp {
     this.loadedDates = new Set([this.currentDate]);
     this.priorityFilter = 'all'; // フィルターを初期化
     this.templates = {
-      nightshift: { title: '夜勤', startTime: '17:00', endTime: '23:59' },
+      nightshift: { title: '夜勤', startTime: '17:00', endTime: '09:00' },
       travel: { title: '移動', startTime: '09:00', endTime: '09:10' },
       meal: { title: '食事', startTime: '12:00', endTime: '12:30' },
       sleep: { title: '睡眠', startTime: '22:00', endTime: '06:00' },
@@ -862,13 +862,7 @@ export class TaskApp {
       clearBtn.addEventListener('click', () => this._clearCompletedTasks());
     }
 
-    // テンプレートボタン
-    Object.keys(this.templates).forEach((key) => {
-      const btn = this.document.getElementById(`template-${key}`);
-      if (btn) {
-        btn.addEventListener('click', () => this.addTemplateTask(key));
-      }
-    });
+    // テンプレートボタンの処理はRendererで行う
   }
 
   setPriorityFilter(priority) {
